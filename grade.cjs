@@ -12,10 +12,10 @@
  *
  * Due date: 11/24/2025 11:59 PM Riyadh (UTC+03:00)
  *
- * IMPORTANT (late check):
- * - Use the latest commit on the repo (no bot filtering) and compare to due date.
- * - If commit time <= due: status=0, submission=20
- * - If commit time  > due: status=1, submission=10
+ * IMPORTANT (late check) — FIXED:
+ * - Use the latest repo commit (HEAD) timestamp and compare to due date.
+ * - If HEAD <= due: status=0, submission=20
+ * - If HEAD  > due: status=1, submission=10
  * - If missing/empty required file: status=2, submission=0
  *
  * Outputs:
@@ -43,8 +43,8 @@ fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 const DUE_ISO = "2025-11-24T23:59:00+03:00";
 const DUE_EPOCH_MS = Date.parse(DUE_ISO);
 
-/** Required file (adjust if your starter repo differs) */
-const REQUIRED_SERVER_PATH = path.join("backend", "server.js");
+/** Required file is in repo root */
+const REQUIRED_SERVER_PATH = "server.js";
 
 /** ---------- Student ID ---------- */
 function getStudentId() {
@@ -92,8 +92,7 @@ function getHeadCommitInfo() {
 }
 
 function wasSubmittedLateStrict(headEpochMs) {
-  // If we cannot read head time, assume late-safe? (do NOT incorrectly mark late as on-time)
-  // We'll treat unknown time as late (status=1) if there is a submission file.
+  // If we cannot read time, treat as late (prevents incorrectly giving on-time)
   if (!headEpochMs) return true;
   return headEpochMs > DUE_EPOCH_MS;
 }
@@ -150,12 +149,12 @@ function checkRegister(code) {
   ]);
 
   const missingFields400 = any(code, [
-    /status\s*\(\s*400\s*\)\s*\.json\s*\(\s*\{\s*error\s*:\s*["'`]Email and password are required["'`]\s*\}\s*\)/i,
     /Email and password are required/i,
+    /status\s*\(\s*400\s*\)\s*\.json/i,
   ]);
 
   const checksExisting = any(code, [
-    /users\s*\.find\s*\(\s*\(\s*\w+\s*\)\s*=>\s*\w+\s*\.\s*email\s*===\s*email\s*\)/i,
+    /users\s*\.find\s*\(/i,
     /User already exists/i,
   ]);
 
@@ -165,12 +164,12 @@ function checkRegister(code) {
   ]);
 
   const pushesUser = any(code, [
-    /users\s*\.push\s*\(\s*\{\s*email\s*,\s*passwordHash\s*:\s*\w+\s*\}\s*\)/i,
+    /users\s*\.push\s*\(/i,
     /passwordHash/i,
   ]);
 
   const success201 = any(code, [
-    /status\s*\(\s*201\s*\)\s*\.json\s*\(\s*\{\s*message\s*:\s*["'`]User registered!["'`]\s*\}\s*\)/i,
+    /status\s*\(\s*201\s*\)\s*\.json/i,
     /User registered!/i,
   ]);
 
@@ -182,18 +181,12 @@ function checkRegister(code) {
 
   reqs.push({ label: 'Defines POST "/register" route', ok: hasRoute });
   reqs.push({ label: "Reads { email, password } from req.body", ok: readsBody });
-  reqs.push({
-    label: 'Validates missing fields -> 400 "Email and password are required"',
-    ok: missingFields400,
-  });
-  reqs.push({
-    label: 'Checks existing user -> 400 "User already exists"',
-    ok: checksExisting,
-  });
-  reqs.push({ label: "Hashes password with bcrypt.hash(password, 10)", ok: bcryptHash });
-  reqs.push({ label: "Stores user with passwordHash in users[]", ok: pushesUser });
-  reqs.push({ label: 'Returns 201 with message "User registered!"', ok: success201 });
-  reqs.push({ label: "Wraps in try/catch and returns 500 on error", ok: hasTryCatch });
+  reqs.push({ label: 'Validates missing fields -> 400 required error', ok: missingFields400 });
+  reqs.push({ label: "Checks if user already exists", ok: checksExisting });
+  reqs.push({ label: "Hashes password with bcrypt", ok: bcryptHash });
+  reqs.push({ label: "Stores new user in users[] with passwordHash", ok: pushesUser });
+  reqs.push({ label: "Returns success (201) message", ok: success201 });
+  reqs.push({ label: "Has try/catch with 500 error on crash", ok: hasTryCatch });
 
   const passed = reqs.filter((r) => r.ok).length;
   const total = reqs.length;
@@ -222,13 +215,13 @@ function checkLogin(code) {
   ]);
 
   const findsUser = any(code, [
-    /users\s*\.find\s*\(\s*\(\s*\w+\s*\)\s*=>\s*\w+\s*\.\s*email\s*===\s*email\s*\)/i,
+    /users\s*\.find\s*\(/i,
     /User not found/i,
   ]);
 
   const bcryptCompare = any(code, [
-    /bcrypt\s*\.\s*compare\s*\(\s*password\s*,\s*user\s*\.\s*passwordHash\s*\)/i,
-    /await\s+bcrypt\s*\.\s*compare/i,
+    /bcrypt\s*\.\s*compare\s*\(/i,
+    /passwordHash/i,
   ]);
 
   const wrongPassword400 = any(code, [
@@ -237,18 +230,16 @@ function checkLogin(code) {
   ]);
 
   const jwtSign = any(code, [
-    /jwt\s*\.\s*sign\s*\(\s*\{\s*email\s*\}\s*,\s*JWT_SECRET/i,
+    /jwt\s*\.\s*sign\s*\(/i,
     /expiresIn\s*:\s*["'`]1h["'`]/i,
   ]);
 
   const secretAbc123 = any(code, [
     /JWT_SECRET\s*=\s*["'`]abc123["'`]/i,
-    /const\s+JWT_SECRET\s*=\s*["'`]abc123["'`]/i,
   ]);
 
   const returnsToken = any(code, [
     /res\s*\.json\s*\(\s*\{\s*token\s*\}\s*\)/i,
-    /return\s+res\s*\.json\s*\(\s*\{\s*token\s*\}\s*\)/i,
   ]);
 
   const hasTryCatch = any(code, [
@@ -259,17 +250,14 @@ function checkLogin(code) {
 
   reqs.push({ label: 'Defines POST "/login" route', ok: hasRoute });
   reqs.push({ label: "Reads { email, password } from req.body", ok: readsBody });
-  reqs.push({
-    label: 'Validates missing fields -> 400 "Email and password are required"',
-    ok: missingFields400,
-  });
-  reqs.push({ label: 'Finds user -> 400 "User not found" if missing', ok: findsUser });
-  reqs.push({ label: "Compares password with bcrypt.compare()", ok: bcryptCompare });
-  reqs.push({ label: 'Wrong password -> 400 "Wrong password"', ok: wrongPassword400 });
-  reqs.push({ label: "Creates JWT with jwt.sign(..., { expiresIn: '1h' })", ok: jwtSign });
+  reqs.push({ label: "Validates missing fields (400)", ok: missingFields400 });
+  reqs.push({ label: "Finds user by email / handles user-not-found", ok: findsUser });
+  reqs.push({ label: "Compares passwords with bcrypt.compare()", ok: bcryptCompare });
+  reqs.push({ label: "Handles wrong password (400)", ok: wrongPassword400 });
+  reqs.push({ label: "Creates JWT token with expiresIn=1h", ok: jwtSign });
   reqs.push({ label: 'Uses JWT secret "abc123"', ok: secretAbc123 });
   reqs.push({ label: "Returns { token }", ok: returnsToken });
-  reqs.push({ label: "Wraps in try/catch and returns 500 on error", ok: hasTryCatch });
+  reqs.push({ label: "Has try/catch with 500 error on crash", ok: hasTryCatch });
 
   const passed = reqs.filter((r) => r.ok).length;
   const total = reqs.length;
@@ -293,13 +281,12 @@ function checkWeather(code) {
   ]);
 
   const missingToken401 = any(code, [
-    /status\s*\(\s*401\s*\)\s*\.json\s*\(\s*\{\s*error\s*:\s*["'`]Missing token["'`]\s*\}\s*\)/i,
     /Missing token/i,
+    /status\s*\(\s*401\s*\)\s*\.json/i,
   ]);
 
   const extractsBearer = any(code, [
     /auth\s*\.split\s*\(\s*["'` ]+["'`]\s*\)\s*\[\s*1\s*\]/i,
-    /split\s*\(\s*["'`]\s+["'`]\s*\)\s*\[\s*1\s*\]/i,
     /\bBearer\b/i,
   ]);
 
@@ -309,19 +296,20 @@ function checkWeather(code) {
   ]);
 
   const readsCity = any(code, [
-    /const\s+city\s*=\s*req\s*\.query\s*\.city/i,
     /req\s*\.query\s*\.city/i,
+    /const\s+city\s*=\s*req\s*\.query\s*\.city/i,
   ]);
 
   const cityRequired400 = any(code, [
-    /status\s*\(\s*400\s*\)\s*\.json\s*\(\s*\{\s*error\s*:\s*["'`]City required["'`]\s*\}\s*\)/i,
     /City required/i,
+    /status\s*\(\s*400\s*\)\s*\.json/i,
   ]);
 
   const callsApi = any(code, [
     /goweather\.herokuapp\.com\/weather/i,
-    /fetch\s*\(\s*url\s*\)/i,
+    /encodeURIComponent\s*\(\s*city\s*\)/i,
     /await\s+fetch\s*\(/i,
+    /fetch\s*\(\s*url\s*\)/i,
   ]);
 
   const returnsStructured = any(code, [
@@ -340,14 +328,14 @@ function checkWeather(code) {
 
   reqs.push({ label: 'Defines GET "/weather" route', ok: hasRoute });
   reqs.push({ label: "Reads Authorization header", ok: readsAuthHeader });
-  reqs.push({ label: 'Missing token -> 401 "Missing token"', ok: missingToken401 });
-  reqs.push({ label: "Extracts token from 'Bearer <token>'", ok: extractsBearer });
-  reqs.push({ label: "Verifies JWT and returns 401 on invalid token", ok: verifiesJwt });
-  reqs.push({ label: "Reads city from query string", ok: readsCity });
-  reqs.push({ label: 'Missing city -> 400 "City required"', ok: cityRequired400 });
-  reqs.push({ label: "Calls external weather API with fetch()", ok: callsApi });
-  reqs.push({ label: "Returns structured weather JSON (city/temp/description/wind/raw)", ok: returnsStructured });
-  reqs.push({ label: "Handles weather/API errors with 500", ok: hasWeatherError500 });
+  reqs.push({ label: "Missing token -> 401", ok: missingToken401 });
+  reqs.push({ label: "Extracts Bearer token", ok: extractsBearer });
+  reqs.push({ label: "Verifies JWT / handles invalid token", ok: verifiesJwt });
+  reqs.push({ label: "Reads city from query", ok: readsCity });
+  reqs.push({ label: "Missing city -> 400", ok: cityRequired400 });
+  reqs.push({ label: "Calls external weather API via fetch()", ok: callsApi });
+  reqs.push({ label: "Returns structured weather JSON", ok: returnsStructured });
+  reqs.push({ label: "Handles API/server errors with 500", ok: hasWeatherError500 });
 
   const passed = reqs.filter((r) => r.ok).length;
   const total = reqs.length;
@@ -372,8 +360,6 @@ const fileNote = hasServer
 /** ---------- Submission validation (FIXED) ---------- */
 const headInfo = getHeadCommitInfo();
 
-// status: 2 if missing/empty
-// else status: 0 if head commit <= due, else 1
 let status = 0;
 if (!hasServer || serverEmpty) status = 2;
 else status = wasSubmittedLateStrict(headInfo ? headInfo.epochMs : null) ? 1 : 0;
@@ -408,11 +394,7 @@ const totalEarned = Math.min(earnedTasks + submissionMarks, 100);
 
 /** ---------- Feedback formatting ---------- */
 function formatReqs(reqs) {
-  const lines = [];
-  for (const r of reqs) {
-    lines.push(r.ok ? `- ✅ ${r.label}` : `- ❌ ${r.label}`);
-  }
-  return lines.join("\n");
+  return reqs.map((r) => (r.ok ? `- ✅ ${r.label}` : `- ❌ ${r.label}`)).join("\n");
 }
 
 /** ---------- Build Summary ---------- */
